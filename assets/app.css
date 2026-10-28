@@ -593,3 +593,47 @@ html { scroll-padding-top: calc(var(--mast-h) + 16px); }
 @media (pointer: coarse) and (max-width: 720px) { .mast .btn-new { width: 44px; padding: 0; } }
 /* Phones: the decision strip sits in the flow so it never covers the claim or the tab bar. */
 @media (max-width: 720px) { .action { position: static; box-shadow: none; } }
+
+/* ───────── Receipts per expense line ───────── */
+.claim-form { display: block; max-width: 1040px; }
+.item { row-gap: 10px; padding-block: 14px; }
+.item + .item { border-top: 1px solid var(--rule); }
+.item .i-rc { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rc { list-style: none; margin: 0; padding: 0; display: contents; }
+.rc li { position: relative; animation: enter 200ms var(--ease); }
+.rc-img { display: grid; place-items: center; width: 48px; height: 56px; border-radius: 4px; object-fit: cover; object-position: top; background: var(--tint); box-shadow: 0 0 0 1px rgba(0,0,0,.12); font-size: 11px; font-weight: 700; color: var(--muted); }
+.rc-x { position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; display: grid; place-items: center; padding: 0; background: var(--ink); color: #fff; cursor: pointer; }
+.rc-add { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 56px; padding: 0 14px; border: 1.5px dashed var(--rule-2); border-radius: var(--r); color: var(--biro); font-weight: 600; font-size: 14px; cursor: pointer; transition: border-color 150ms var(--ease), background-color 150ms var(--ease); }
+.rc-add input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.rc-add:focus-within, .rc-add.is-over { border-color: var(--biro); background: var(--biro-wash); }
+.item:has(.err) .rc:empty + .rc-add { border-color: var(--no); color: var(--no); }
+.rc-note { color: var(--no); font-size: 13px; }
+
+.send { border-top: 1px solid var(--rule); align-items: flex-end; }
+.send-actions { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; justify-content: flex-end; flex: 1; }
+.send-actions .more { flex: 1; min-width: 240px; max-width: 460px; }
+.send-actions .more summary { min-height: 48px; }
+.send-actions .more[open] summary { margin-bottom: 8px; min-height: 0; }
+
+/* Receipt beside each line on the claim */
+.rc-cell { white-space: nowrap; }
+.rc-mini { width: 32px; height: 38px; padding: 0; margin-right: 4px; border-radius: 3px; overflow: hidden; border: 1px solid var(--rule-2); background: var(--tint); cursor: pointer; vertical-align: middle; font-size: 9px; font-weight: 700; color: var(--muted); }
+.rc-mini img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.rc-mini[aria-pressed="true"] { border-color: var(--biro); box-shadow: 0 0 0 1px var(--biro); }
+
+@media (hover: hover) and (pointer: fine) {
+  .rc-add:hover { border-color: var(--biro); background: var(--biro-wash); }
+  .rc-mini:hover { border-color: var(--faint); }
+}
+@media (max-width: 720px) {
+  .item { padding: 16px; }
+  .rc-add { flex: 1; justify-content: center; height: 56px; }
+  .send { flex-direction: column; align-items: stretch; }
+  .send-actions { flex-direction: column; align-items: stretch; }
+  .send-actions .more { max-width: none; }
+  .send-actions .btn { width: 100%; }
+}
+@media (pointer: coarse) {
+  .rc-x { width: 30px; height: 30px; top: -10px; right: -10px; }
+  .rc-mini { width: 40px; height: 48px; }
+}

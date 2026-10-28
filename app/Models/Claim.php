@@ -15,7 +15,7 @@ final class Claim
 
     public static function files(int $id): array
     {
-        return Database::query('SELECT * FROM claim_files WHERE claim_id = ? ORDER BY id', [$id])->fetchAll();
+        return Database::query('SELECT * FROM claim_files WHERE claim_id = ? ORDER BY COALESCE(item_position, 65535), id', [$id])->fetchAll();
     }
 
     public static function file(int $fileId): ?array
@@ -128,7 +128,8 @@ final class Claim
     }
 
     /** Claimant edits after the reviewer asks for changes. Puts the claim back in review. */
-    public static function resubmit(int $id, string $staffId, string $title, string $notes, array $items, array $files, array $removeFileIds, string $message): array
+    /** @param array<int,int> $keepPositions kept file id => line position it now belongs to */
+    public static function resubmit(int $id, string $staffId, string $title, string $notes, array $items, array $files, array $removeFileIds, array $keepPositions, string $message): array
     {
         $pdo = Database::pdo();
         $pdo->beginTransaction();
@@ -146,6 +147,9 @@ final class Claim
                 $in = implode(',', array_fill(0, count($removeFileIds), '?'));
                 $removed = Database::query("SELECT stored_name FROM claim_files WHERE claim_id = ? AND id IN ($in)", [$id, ...$removeFileIds])->fetchAll();
                 Database::query("DELETE FROM claim_files WHERE claim_id = ? AND id IN ($in)", [$id, ...$removeFileIds]);
+            }
+            foreach ($keepPositions as $fileId => $pos) {
+                Database::query('UPDATE claim_files SET item_position = ? WHERE id = ? AND claim_id = ?', [$pos, $fileId, $id]);
             }
             self::writeFiles($id, $files);
             self::event($id, $staffId, 'resubmitted', $message);
@@ -195,8 +199,8 @@ final class Claim
     {
         foreach ($files as $f) {
             Database::query(
-                'INSERT INTO claim_files (claim_id, original_name, stored_name, mime, size_bytes, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)',
-                [$id, $f['original_name'], $f['stored_name'], $f['mime'], $f['size_bytes'], $f['uploaded_by']],
+                'INSERT INTO claim_files (claim_id, item_position, original_name, stored_name, mime, size_bytes, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$id, $f['item_position'] ?? null, $f['original_name'], $f['stored_name'], $f['mime'], $f['size_bytes'], $f['uploaded_by']],
             );
         }
     }

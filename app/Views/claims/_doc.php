@@ -9,7 +9,16 @@ $payer = $claim['paid_by'] ? ($people[$claim['paid_by']] ?? $gone) : null;
 $verbs = ['submitted' => 'sent this for review', 'resubmitted' => 'updated and resent it', 'comment' => 'wrote', 'approved' => 'approved it', 'rejected' => 'declined it', 'changes_requested' => 'asked for changes', 'paid' => 'marked it paid'];
 $last = null;
 foreach (array_reverse($events) as $ev) if (in_array($ev['type'], ['changes_requested', 'rejected'], true)) { $last = $ev; break; }
-$images = array_values(array_filter($files, fn($f) => in_array($f['mime'], ['image/jpeg', 'image/png', 'image/webp'], true)));
+$isImg = fn(array $f) => in_array($f['mime'], ['image/jpeg', 'image/png', 'image/webp'], true);
+$lineOf = [];
+foreach ($items as $n => $it) $lineOf[(int) $it['position']] = $n + 1;
+// Caption for each receipt: which expense it proves.
+$labelFor = function (array $f) use ($items, $lineOf): string {
+    if ($f['item_position'] === null || !isset($lineOf[(int) $f['item_position']])) return 'Whole claim';
+    $n = $lineOf[(int) $f['item_position']];
+    return 'Line ' . $n . ': ' . $items[$n - 1]['description'];
+};
+$fileIndex = array_flip(array_column($files, 'id'));
 $first = $files[0] ?? null;
 $who = fn(array $p, string $pid) => $pid === $user['id'] ? 'You' : $p['name'];
 ?>
@@ -39,13 +48,23 @@ $who = fn(array $p, string $pid) => $pid === $user['id'] ? 'You' : $p['name'];
         <div class="claimant"><?= avatar($owner, 'md') ?><div class="min0"><b><?= e($owner['name']) ?></b><span><?= e($owner['title']) ?></span></div></div>
       <?php endif ?>
       <table class="lines">
-        <thead><tr><th>Date</th><th>Description</th><th class="hide-sm">Category</th><th class="r">Amount</th></tr></thead>
+        <thead><tr><th>Date</th><th>Description</th><th class="hide-sm">Category</th><th>Receipt</th><th class="r">Amount</th></tr></thead>
         <tbody>
           <?php foreach ($items as $it): ?>
-            <tr><td class="d num"><?= date('j M', strtotime($it['spent_on'])) ?></td><td><?= e($it['description']) ?><span class="cat show-sm"><?= e(category_label($it)) ?></span></td><td class="cat hide-sm"><?= e(category_label($it)) ?></td><td class="r num"><?= money((int) $it['amount_pence']) ?></td></tr>
+            <?php $mineFiles = array_values(array_filter($files, fn($f) => $f['item_position'] !== null && (int) $f['item_position'] === (int) $it['position'])); ?>
+            <tr>
+              <td class="d num"><?= date('j M', strtotime($it['spent_on'])) ?></td>
+              <td><?= e($it['description']) ?><span class="cat show-sm"><?= e(category_label($it)) ?></span></td>
+              <td class="cat hide-sm"><?= e(category_label($it)) ?></td>
+              <td class="rc-cell">
+                <?php foreach ($mineFiles as $f): ?><button type="button" class="rc-mini" data-show="<?= $fileIndex[$f['id']] ?>" aria-label="Show receipt for <?= e($it['description']) ?>"><?php if ($isImg($f)): ?><img src="<?= url('/files/' . $f['id']) ?>" alt="" loading="lazy" width="32" height="38"><?php else: ?><?= strtoupper(pathinfo($f['stored_name'], PATHINFO_EXTENSION)) ?><?php endif ?></button><?php endforeach ?>
+                <?php if (!$mineFiles): ?><span class="muted">See claim</span><?php endif ?>
+              </td>
+              <td class="r num"><?= money((int) $it['amount_pence']) ?></td>
+            </tr>
           <?php endforeach ?>
         </tbody>
-        <tfoot><tr><td colspan="2">Total</td><td class="hide-sm"></td><td class="r num"><?= money((int) $claim['total_pence']) ?></td></tr></tfoot>
+        <tfoot><tr><td colspan="2">Total</td><td class="hide-sm"></td><td></td><td class="r num"><?= money((int) $claim['total_pence']) ?></td></tr></tfoot>
       </table>
       <dl class="signoff">
         <div><dt>Claimed by</dt><dd class="sig"><?= e($owner['name']) ?></dd><dd class="dated num"><?= date('j M Y', strtotime($claim['submitted_at'])) ?></dd></div>
@@ -125,11 +144,11 @@ $who = fn(array $p, string $pid) => $pid === $user['id'] ? 'You' : $p['name'];
       <a class="viewer-main" href="<?= url('/files/' . $first['id']) ?>" target="_blank" rel="noopener" data-viewer-link>
         <?php if ($isImg): ?><img src="<?= url('/files/' . $first['id']) ?>" alt="Receipt: <?= e($first['original_name']) ?>" data-viewer-img><?php else: ?><span class="pdf"><b><?= strtoupper(pathinfo($first['stored_name'], PATHINFO_EXTENSION)) ?></b>Open <?= e($first['original_name']) ?></span><?php endif ?>
       </a>
-      <div class="viewer-cap"><span data-viewer-name><?= e($first['original_name']) ?></span><span><?= count($files) ?> file<?= count($files) === 1 ? '' : 's' ?> · opens full size</span></div>
+      <div class="viewer-cap"><span data-viewer-name><?= e($labelFor($first)) ?></span><span><?= count($files) ?> receipt<?= count($files) === 1 ? '' : 's' ?> · tap to enlarge</span></div>
       <?php if (count($files) > 1): ?>
         <div class="thumbs">
           <?php foreach ($files as $n => $f): $img = in_array($f['mime'], ['image/jpeg', 'image/png', 'image/webp'], true); ?>
-            <button type="button" aria-pressed="<?= $n === 0 ? 'true' : 'false' ?>" aria-label="Show <?= e($f['original_name']) ?>" data-src="<?= url('/files/' . $f['id']) ?>" data-name="<?= e($f['original_name']) ?>" data-img="<?= $img ? '1' : '0' ?>"><?php if ($img): ?><img src="<?= url('/files/' . $f['id']) ?>" alt="" loading="lazy"><?php else: ?><?= strtoupper(pathinfo($f['stored_name'], PATHINFO_EXTENSION)) ?><?php endif ?></button>
+            <button type="button" aria-pressed="<?= $n === 0 ? 'true' : 'false' ?>" aria-label="Show receipt, <?= e($labelFor($f)) ?>" data-src="<?= url('/files/' . $f['id']) ?>" data-name="<?= e($labelFor($f)) ?>" data-img="<?= $img ? '1' : '0' ?>"><?php if ($img): ?><img src="<?= url('/files/' . $f['id']) ?>" alt="" loading="lazy"><?php else: ?><?= strtoupper(pathinfo($f['stored_name'], PATHINFO_EXTENSION)) ?><?php endif ?></button>
           <?php endforeach ?>
         </div>
       <?php endif ?>

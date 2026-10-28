@@ -5,7 +5,8 @@ declare(strict_types=1);
 final class Receipt
 {
     public const MAX_BYTES = 10 * 1024 * 1024;
-    public const MAX_FILES = 10;
+    public const MAX_FILES = 30;
+    public const MAX_PER_LINE = 5;
     public const TYPES = [
         'application/pdf' => 'pdf',
         'image/jpeg' => 'jpg',
@@ -29,6 +30,21 @@ final class Receipt
         foreach ($f['name'] as $i => $name) {
             if ($f['error'][$i] === UPLOAD_ERR_NO_FILE) continue;
             $out[] = ['name' => $name, 'tmp' => $f['tmp_name'][$i], 'error' => $f['error'][$i], 'size' => $f['size'][$i]];
+        }
+        return $out;
+    }
+
+    /** Per-line uploads from receipts[<line key>][], keyed by the line's form key. */
+    public static function byLine(string $field = 'receipts'): array
+    {
+        $f = $_FILES[$field] ?? null;
+        if (!$f || !is_array($f['name'])) return [];
+        $out = [];
+        foreach ($f['name'] as $key => $names) {
+            foreach ((array) $names as $n => $name) {
+                if ($f['error'][$key][$n] === UPLOAD_ERR_NO_FILE) continue;
+                $out[$key][] = ['name' => $name, 'tmp' => $f['tmp_name'][$key][$n], 'error' => $f['error'][$key][$n], 'size' => $f['size'][$key][$n]];
+            }
         }
         return $out;
     }

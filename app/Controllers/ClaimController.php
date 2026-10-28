@@ -25,12 +25,9 @@ final class ClaimController
         $user = Auth::require();
         csrf_check();
         [$title, $notes, $items, $errors] = self::input();
-        $uploads = Receipt::fromRequest();
-        if (!$uploads) $errors['proof'] = 'Attach at least one receipt or invoice.';
-        elseif ($msg = Receipt::validate($uploads)) $errors['proof'] = $msg;
         if ($errors) self::back('/claims/new', $errors);
 
-        $files = Receipt::store($uploads, $user['id']);
+        $files = self::storeLineReceipts($items, $user['id']);
         try {
             $id = Claim::create($user['id'], $title, $notes, $items, $files);
         } catch (Throwable $e) {
@@ -39,6 +36,21 @@ final class ClaimController
         }
         flash('Sent for review. You will see the decision here.');
         redirect("/claims/$id");
+    }
+
+    /** Saves each line's new uploads, tagged with the line they prove. */
+    private static function storeLineReceipts(array $items, string $uploaderId): array
+    {
+        $files = [];
+        try {
+            foreach ($items as $pos => $it) {
+                foreach (Receipt::store($it['uploads'], $uploaderId) as $row) $files[] = $row + ['item_position' => $pos];
+            }
+        } catch (Throwable $e) {
+            Receipt::discard($files);
+            throw $e;
+        }
+        return $files;
     }
 
     public function show(string $id): void
@@ -85,19 +97,18 @@ final class ClaimController
         $user = Auth::require();
         csrf_check();
         $claim = self::editable((int) $id, $user);
-        [$title, $notes, $items, $errors] = self::input();
         $existing = array_map('intval', array_column(Claim::files($claim['id']), 'id'));
-        $remove = array_values(array_intersect($existing, array_map('intval', (array) ($_POST['remove_files'] ?? []))));
-        $uploads = Receipt::fromRequest();
-        if ($uploads && ($msg = Receipt::validate($uploads))) $errors['proof'] = $msg;
-        elseif (count($existing) - count($remove) + count($uploads) < 1) $errors['proof'] = 'Keep or attach at least one receipt.';
-        elseif (count($existing) - count($remove) + count($uploads) > Receipt::MAX_FILES) $errors['proof'] = 'Attach up to ' . Receipt::MAX_FILES . ' files per claim.';
-        $message = mb_substr(trim((string) ($_POST['message'] ?? '')), 0, 2000);
+        [$title, $message, $items, $errors] = self::input($existing);
+        $notes = (string) ($claim['notes'] ?? '');
         if ($errors) self::back("/claims/{$claim['id']}/edit", $errors);
 
-        $files = Receipt::store($uploads, $user['id']);
+        $keepPositions = [];
+        foreach ($items as $pos => $it) foreach ($it['keep'] as $fid) $keepPositions[$fid] = $pos;
+        $remove = array_values(array_diff($existing, array_keys($keepPositions)));
+
+        $files = self::storeLineReceipts($items, $user['id']);
         try {
-            $removed = Claim::resubmit($claim['id'], $user['id'], $title, $notes, $items, $files, $remove, $message);
+            $removed = Claim::resubmit($claim['id'], $user['id'], $title, $notes, $items, $files, $remove, $keepPositions, $message);
         } catch (Throwable $e) {
             Receipt::discard($files);
             throw $e;
@@ -166,45 +177,61 @@ final class ClaimController
         return null;
     }
 
-    /** @return array{0:string,1:string,2:array,3:array} */
-    private static function input(): array
+    /**
+     * Reads the expense lines, each with its own receipts. Form keys are kept so errors land on the right line.
+     * @param int[] $existingFileIds receipts already on the claim (when editing)
+     * @return array{0:string,1:string,2:array,3:array}
+     */
+    private static function input(array $existingFileIds = []): array
     {
         $errors = [];
-        $title = mb_substr(trim((string) ($_POST['title'] ?? '')), 0, 160);
         $notes = mb_substr(trim((string) ($_POST['notes'] ?? '')), 0, 2000);
-
+        $uploadsByLine = Receipt::byLine();
+        $keepByLine = (array) ($_POST['keep'] ?? []);
 
         $items = [];
         $today = date('Y-m-d');
-        foreach (array_values((array) ($_POST['items'] ?? [])) as $i => $row) {
+        $n = 0;
+        $fileCount = 0;
+        foreach ((array) ($_POST['items'] ?? []) as $key => $row) {
             if (!is_array($row)) continue;
             $date = (string) ($row['spent_on'] ?? '');
             $cat = (string) ($row['category'] ?? '');
             $other = $cat === 'Other' ? mb_substr(trim((string) ($row['category_other'] ?? '')), 0, 80) : '';
             $desc = mb_substr(trim((string) ($row['description'] ?? '')), 0, 255);
             $amount = parse_pence((string) ($row['amount'] ?? ''));
-            if ($date === '' && $desc === '' && trim((string) ($row['amount'] ?? '')) === '') continue;
-            $n = $i + 1;
+            $uploads = $uploadsByLine[$key] ?? [];
+            $keep = array_values(array_intersect($existingFileIds, array_map('intval', (array) ($keepByLine[$key] ?? []))));
+            if ($date === '' && $desc === '' && trim((string) ($row['amount'] ?? '')) === '' && !$uploads && !$keep) continue;
+            $n++;
+            $fileCount += count($uploads) + count($keep);
+            $e = "item$key";
             $d = DateTime::createFromFormat('!Y-m-d', $date);
-            if (!$d || $d->format('Y-m-d') !== $date) $errors["item$i"] = "Line $n: pick the date you paid.";
-            elseif ($date > $today) $errors["item$i"] = "Line $n: the date is in the future.";
-            elseif (!in_array($cat, CATEGORIES, true)) $errors["item$i"] = "Line $n: choose a category.";
-            elseif ($cat === 'Other' && $other === '') $errors["item$i"] = "Line $n: say what kind of expense \"Other\" is, for example \"Parking\".";
-            elseif ($desc === '') $errors["item$i"] = "Line $n: say what it was for.";
-            elseif (!$amount) $errors["item$i"] = "Line $n: enter the amount in pounds, for example 12.50.";
-            $items[] = ['spent_on' => $date, 'category' => $cat, 'category_other' => $other, 'description' => $desc, 'amount_pence' => (int) $amount, 'amount' => (string) ($row['amount'] ?? '')];
+            if (!$d || $d->format('Y-m-d') !== $date) $errors[$e] = "Line $n: pick the date you paid.";
+            elseif ($date > $today) $errors[$e] = "Line $n: the date is in the future.";
+            elseif (!in_array($cat, CATEGORIES, true)) $errors[$e] = "Line $n: choose a category.";
+            elseif ($cat === 'Other' && $other === '') $errors[$e] = "Line $n: say what kind of expense \"Other\" is, for example \"Parking\".";
+            elseif ($desc === '') $errors[$e] = "Line $n: say what it was for.";
+            elseif (!$amount) $errors[$e] = "Line $n: enter the amount in pounds, for example 12.50.";
+            elseif (!$uploads && !$keep) $errors[$e] = "Line $n: attach the receipt for this expense.";
+            elseif (count($uploads) + count($keep) > Receipt::MAX_PER_LINE) $errors[$e] = "Line $n: attach up to " . Receipt::MAX_PER_LINE . ' receipts.';
+            elseif ($uploads && ($msg = Receipt::validate($uploads))) $errors[$e] = "Line $n: $msg";
+            $items[] = ['spent_on' => $date, 'category' => $cat, 'category_other' => $other, 'description' => $desc,
+                'amount_pence' => (int) $amount, 'amount' => (string) ($row['amount'] ?? ''), 'uploads' => $uploads, 'keep' => $keep];
         }
         if (!$items) $errors['items'] = 'Add at least one expense.';
-        if ($title === '' && $items) $title = mb_substr($items[0]['description'], 0, 160);
         if (count($items) > 50) $errors['items'] = 'Split this into claims of 50 lines or fewer.';
+        if ($fileCount > Receipt::MAX_FILES) $errors['items'] = 'Attach up to ' . Receipt::MAX_FILES . ' receipts per claim. Split it into two claims.';
+        // No title field: the claim is named after its first line, e.g. "Train to Leeds and 2 more".
+        $title = $items ? mb_substr($items[0]['description'] . (count($items) > 1 ? ' and ' . (count($items) - 1) . ' more' : ''), 0, 160) : '';
         return [$title, $notes, $items, $errors];
     }
 
     private static function back(string $path, array $errors): never
     {
         $_SESSION['errors'] = $errors;
-        $_SESSION['old'] = ['title' => $_POST['title'] ?? '', 'notes' => $_POST['notes'] ?? '', 'items' => array_values((array) ($_POST['items'] ?? [])), 'message' => $_POST['message'] ?? ''];
-        flash('Some details need fixing before this can be sent. Your receipts were not saved, so attach them again.', 'error');
+        $_SESSION['old'] = ['notes' => $_POST['notes'] ?? '', 'items' => (array) ($_POST['items'] ?? []), 'keep' => (array) ($_POST['keep'] ?? [])];
+        flash('Some details need fixing. New photos were not saved, so attach them again on the lines shown.', 'error');
         redirect($path);
     }
 }

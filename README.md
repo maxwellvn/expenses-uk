@@ -16,7 +16,7 @@ Nobody approves or pays their own claim.
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill it in. `APP_ENV=production` on a live server.
-2. Run the SQL files in order: `database/schema.sql`, then `002`, `003`, `004`.
+2. Run the SQL files in order: `database/schema.sql`, then `002` to `005`.
 3. Make `storage/receipts` writable by the web server. Receipts are never served directly; `.htaccess` blocks `app/`, `storage/`, `database/`, `deploy/` and dotfiles.
 4. The site must be served from this folder with `mod_rewrite` on.
 

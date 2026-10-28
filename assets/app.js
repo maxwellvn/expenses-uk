@@ -40,6 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function viewer(root) {
+  // Receipt buttons on each expense line open that receipt in the viewer.
+  const doc = root.closest('.doc');
+  doc?.querySelectorAll('[data-show]').forEach((b) => b.addEventListener('click', () => {
+    const t = root.querySelectorAll('.thumbs button')[Number(b.dataset.show)];
+    if (t) t.click();
+    doc.querySelectorAll('[data-show]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    if (root.getBoundingClientRect().top < 0 || root.getBoundingClientRect().bottom > innerHeight) root.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  }));
   const link = root.querySelector('[data-viewer-link]');
   const name = root.querySelector('[data-viewer-name]');
   root.querySelectorAll('.thumbs button').forEach((b) => {
@@ -68,13 +76,13 @@ function viewer(root) {
 function claimForm(form) {
   const lines = form.querySelector('[data-lines]');
   const tpl = form.querySelector('[data-line-template]');
-  let next = lines.children.length;
+  let next = Number(form.dataset.next) || lines.children.length;
 
   const recount = () => {
     const rows = lines.querySelectorAll('[data-line]');
     const total = [...lines.querySelectorAll('[data-amount]')].reduce((t, i) => t + pence(i.value), 0);
     form.querySelectorAll('[data-total]').forEach((el) => (el.textContent = gbp.format(total / 100)));
-    form.querySelector('[data-count]').textContent = rows.length + (rows.length === 1 ? ' line' : ' lines');
+    form.querySelector('[data-count]').textContent = rows.length + (rows.length === 1 ? ' expense' : ' expenses');
     rows.forEach((r) => (r.querySelector('[data-remove-line]').disabled = rows.length === 1));
   };
 
@@ -84,6 +92,7 @@ function claimForm(form) {
     row.classList.add('item-new');
     // Same day as the line above is the usual case: one trip, several receipts.
     row.querySelector('input[type=date]').value = row.previousElementSibling?.querySelector('input[type=date]')?.value || new Date().toISOString().slice(0, 10);
+    receipts(row);
     row.querySelector('select').focus();
     recount();
   });
@@ -94,15 +103,25 @@ function claimForm(form) {
     recount();
   });
   lines.addEventListener('input', (e) => e.target.matches('[data-amount]') && recount());
+  lines.querySelectorAll('[data-line]').forEach(receipts);
   recount();
 
-  // Receipts: keep a running list so choosing files twice adds rather than replaces.
-  const input = form.querySelector('[data-proof]');
-  const drop = form.querySelector('[data-drop]');
-  const list = form.querySelector('[data-picked]');
+  form.addEventListener('submit', () => {
+    const btn = form.querySelector('[data-submit]');
+    setTimeout(() => { btn.disabled = true; btn.textContent = 'Sending…'; });
+  });
+}
+
+// Each expense line keeps its own receipts; choosing again adds rather than replaces.
+function receipts(row) {
+  const input = row.querySelector('[data-rc-input]');
+  const list = row.querySelector('[data-rc]');
+  const label = row.querySelector('[data-rc-label]');
+  const add = row.querySelector('.rc-add');
   let picked = new DataTransfer();
 
-  const sync = () => {
+  const relabel = () => (label.textContent = list.children.length ? 'Add another' : 'Add receipt');
+  const render = () => {
     input.files = picked.files;
     list.querySelectorAll('[data-new]').forEach((li) => li.remove());
     [...picked.files].forEach((f, idx) => {
@@ -110,42 +129,33 @@ function claimForm(form) {
       li.dataset.new = '';
       const isImg = f.type.startsWith('image/') && !/hei[cf]/.test(f.type);
       const pic = document.createElement(isImg ? 'img' : 'span');
-      pic.className = 'pk-img';
+      pic.className = 'rc-img';
       if (isImg) { pic.src = URL.createObjectURL(f); pic.alt = ''; } else pic.textContent = (f.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
-      const cap = document.createElement('div');
-      cap.className = 'pk-cap';
-      const tooBig = f.size > 10485760;
-      cap.textContent = tooBig ? 'Over 10 MB' : f.name + ' · ' + size(f.size);
-      if (tooBig) cap.classList.add('err');
+      if (f.size > 10485760) { pic.title = 'Over 10 MB'; pic.style.outline = '2px solid var(--no)'; }
       const rm = document.createElement('button');
       rm.type = 'button';
-      rm.className = 'pk-x';
+      rm.className = 'rc-x';
       rm.setAttribute('aria-label', 'Remove ' + f.name);
       rm.innerHTML = X_ICON;
       rm.addEventListener('click', () => {
         const keep = new DataTransfer();
         [...picked.files].forEach((x, j) => j !== idx && keep.items.add(x));
         picked = keep;
-        sync();
+        render();
       });
-      li.append(pic, cap, rm);
+      li.append(pic, rm);
       list.append(li);
     });
-    drop.classList.toggle('has-files', list.children.length > 0);
+    relabel();
   };
-  drop.classList.toggle('has-files', list.children.length > 0);
 
-  const add = (files) => { [...files].forEach((f) => picked.items.add(f)); sync(); };
-  input.addEventListener('change', () => add(input.files));
-  ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('is-over'); }));
-  ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('is-over')));
-  drop.addEventListener('drop', (e) => { e.preventDefault(); add(e.dataTransfer.files); });
-  list.addEventListener('change', (e) => {
-    if (e.target.matches('[data-remove-existing]')) e.target.closest('li').classList.toggle('is-removed', e.target.checked);
-  });
-
-  form.addEventListener('submit', () => {
-    const btn = form.querySelector('[data-submit]');
-    setTimeout(() => { btn.disabled = true; btn.textContent = 'Sending…'; });
+  input.addEventListener('change', () => { [...input.files].forEach((f) => picked.items.add(f)); render(); });
+  ['dragenter', 'dragover'].forEach((t) => add.addEventListener(t, (e) => { e.preventDefault(); add.classList.add('is-over'); }));
+  ['dragleave', 'drop'].forEach((t) => add.addEventListener(t, () => add.classList.remove('is-over')));
+  add.addEventListener('drop', (e) => { e.preventDefault(); [...e.dataTransfer.files].forEach((f) => picked.items.add(f)); render(); });
+  // Receipts already on the claim: removing one drops its hidden "keep" input.
+  list.addEventListener('click', (e) => {
+    const x = e.target.closest('[data-rc-remove]');
+    if (x) { x.closest('li').remove(); relabel(); }
   });
 }
