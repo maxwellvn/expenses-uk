@@ -6,3 +6,6 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="<?= asset('app.css') ?>">
 <script src="<?= asset('app.js') ?>" defer></script>
+<?php if ($relay = env('RELAY_KEY', 'wk_294d761d65b6136f728589de')): $me = Auth::user() ?>
+<script src="https://relay.movortech.com/widget.js" data-key="<?= e($relay) ?>"<?php if ($me): ?> data-name="<?= e($me['name']) ?>"<?php if (!empty($me['email'])): ?> data-email="<?= e($me['email']) ?>"<?php endif; endif ?> async></script>
+<?php endif ?>

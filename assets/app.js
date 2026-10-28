@@ -166,3 +166,20 @@ function receipts(row) {
     if (x) { x.closest('li').remove(); relabel(); }
   });
 }
+
+// Relay live chat: its launcher is fixed bottom right inside a shadow root, which on phones
+// sits on the tab bar. Add one sheet to that shadow root to lift the launcher and panel above it.
+if (document.querySelector('.tabbar')) {
+  const lift = new CSSStyleSheet();
+  lift.replaceSync('@media (max-width:720px){.floating .launcher{bottom:calc(84px + env(safe-area-inset-bottom))}.floating .panel{bottom:calc(152px + env(safe-area-inset-bottom));height:min(660px,calc(100% - 172px))}}');
+  const adopt = () => {
+    const shadow = document.querySelector('[data-relay]')?.shadowRoot;
+    if (!shadow) return false;
+    shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, lift];
+    return true;
+  };
+  if (!adopt()) {
+    const watch = new MutationObserver(() => adopt() && watch.disconnect());
+    watch.observe(document.body, { childList: true });
+  }
+}

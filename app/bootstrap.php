@@ -185,7 +185,7 @@ function status_chip(string $status): string
     return '<span class="status st-' . $tone . '">' . icon($ico) . e($label) . '</span>';
 }
 
-header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:; form-action 'self' https://accounts.kingsch.at; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' https://relay.movortech.com; connect-src 'self' https://relay.movortech.com wss://relay.movortech.com; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:; form-action 'self' https://accounts.kingsch.at; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
 
 /** Inline icons, 1.75 stroke to match 14px medium text. */
 function icon(string $name, int $size = 16): string

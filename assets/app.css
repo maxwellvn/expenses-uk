@@ -692,3 +692,9 @@ html { scroll-padding-top: calc(var(--mast-h) + 16px); }
 .ns-line .muted { font-size: 14px; }
 .ns-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ns-steps { margin: 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 4px; }
+
+
+/* Relay live chat launcher floats above the phone tab bar; leave room to scroll past it. */
+@media (max-width: 720px) {
+  body:has([data-relay]) .page.has-tabbar { padding-bottom: calc(var(--tabbar-h) + 96px + env(safe-area-inset-bottom)); }
+}
