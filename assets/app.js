@@ -106,6 +106,13 @@ function claimForm(form) {
   lines.querySelectorAll('[data-line]').forEach(receipts);
   recount();
 
+  // Closing the note cancels it: the text is cleared so it is not sent.
+  const note = form.querySelector('.send-actions .more');
+  note?.addEventListener('toggle', () => {
+    const box = note.querySelector('textarea');
+    if (note.open) box.focus(); else box.value = '';
+  });
+
   form.addEventListener('submit', () => {
     const btn = form.querySelector('[data-submit]');
     setTimeout(() => { btn.disabled = true; btn.textContent = 'Sending…'; });

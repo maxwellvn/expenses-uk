@@ -43,7 +43,7 @@ $next = $lines ? max(array_map('intval', array_keys($lines))) + 1 : 1;
       <div class="tot"><span data-count><?= count($lines) ?> expense<?= count($lines) === 1 ? '' : 's' ?></span><b class="num" data-total><?= money($total) ?></b></div>
       <div class="send-actions">
         <details class="more" <?= $noteVal !== '' ? 'open' : '' ?>>
-          <summary><?= $editing ? 'Add a note about what you changed' : 'Add a note for the reviewer' ?></summary>
+          <summary data-note-toggle><span class="if-closed"><?= icon('plus') ?><?= $editing ? 'Add a note about what you changed' : 'Add a note for the reviewer' ?></span><span class="if-open"><?= icon('x') ?>Cancel note</span></summary>
           <label class="sr-only" for="notes">Note for the reviewer</label>
           <textarea class="input" id="notes" name="notes" maxlength="2000" placeholder="<?= $editing ? 'Added the itemised receipt' : 'Anything the reviewer should know' ?>"><?= e($noteVal) ?></textarea>
         </details>

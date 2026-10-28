@@ -637,3 +637,8 @@ html { scroll-padding-top: calc(var(--mast-h) + 16px); }
   .rc-x { width: 30px; height: 30px; top: -10px; right: -10px; }
   .rc-mini { width: 40px; height: 48px; }
 }
+
+/* Note disclosure: the same link cancels it once open */
+.more .if-open, .more[open] .if-closed { display: none; }
+.more[open] .if-open, .more .if-closed { display: inline-flex; align-items: center; gap: 6px; }
+.more[open] summary { color: var(--muted); }
