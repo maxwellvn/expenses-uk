@@ -1,0 +1,19 @@
+Options -Indexes
+RewriteEngine On
+
+# Pass the Authorization header through to PHP (staff sync uses a bearer token).
+CGIPassAuth On
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+# Never serve code, config, data or uploads directly.
+RewriteRule ^(app|storage|database)(/|$) - [F,L]
+RewriteRule (^|/)\.(?!well-known) - [F,L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [QSA,L]
+
+<IfModule mod_php.c>
+  php_value upload_max_filesize 12M
+  php_value post_max_size 110M
+  php_value max_file_uploads 20
+</IfModule>

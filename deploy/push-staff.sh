@@ -1,0 +1,28 @@
+#!/bin/sh
+# Runs on the workCentral UK server (cron, every 15 minutes). Reads the staff list from the
+# workCentral MySQL container and sends it to the expenses portal. Read-only on workCentral.
+#   */15 * * * * EXPENSES_SYNC_SECRET=... /opt/expenses/push-staff.sh >> /var/log/expenses-staff-sync.log 2>&1
+set -eu
+URL="${EXPENSES_SYNC_URL:-https://expenses-uk.rorportal.org/sync/staff}"
+: "${EXPENSES_SYNC_SECRET:?set EXPENSES_SYNC_SECRET}"
+
+# The workCentral database container: the one that has a workcentral_uk database.
+CONTAINER=""
+for c in $(docker ps --format '{{.Names}}'); do
+  if docker exec "$c" sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SHOW DATABASES LIKE \"workcentral_uk\"" 2>/dev/null' | grep -q workcentral_uk; then
+    CONTAINER="$c"; break
+  fi
+done
+[ -n "$CONTAINER" ] || { echo "$(date -Is) no workcentral_uk container found"; exit 1; }
+
+JSON=$(docker exec "$CONTAINER" sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N --raw workcentral_uk -e "
+  SELECT JSON_ARRAYAGG(JSON_OBJECT(\"id\", u.id, \"name\", u.name, \"role\", u.role, \"title\", u.title,
+    \"department\", COALESCE(d.name, u.department), \"avatar_url\", u.avatar_url, \"kc_handle\", u.kc_handle,
+    \"email\", u.email, \"active\", u.active))
+  FROM users u LEFT JOIN departments d ON d.id = u.department_id" 2>/dev/null')
+
+[ -n "$JSON" ] && [ "$JSON" != "NULL" ] || { echo "$(date -Is) empty staff list, not sending"; exit 1; }
+
+printf '%s' "$JSON" | curl -sS --fail-with-body --max-time 30 -X POST "$URL" \
+  -H "Authorization: Bearer $EXPENSES_SYNC_SECRET" -H 'Content-Type: application/json' --data-binary @- \
+  && echo " $(date -Is) ok"
