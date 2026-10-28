@@ -39,6 +39,7 @@ final class HelpController
             redirect('/help');
         }
         Feedback::create($user['id'] ?? null, $name, $handle, $topic, $message, mb_substr((string) ($_POST['page'] ?? ''), 0, 255));
+        Notify::helpRequest((int) Database::pdo()->lastInsertId(), $name, $handle, Feedback::TOPICS[$topic], $message);
         redirect('/help?sent=1');
     }
 }

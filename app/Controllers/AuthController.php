@@ -55,7 +55,7 @@ final class AuthController
         redirect('/login');
     }
 
-    private static function kingsChatUsername(string $token): ?string
+    public static function kingsChatUsername(string $token): ?string
     {
         $ch = curl_init(env('KC_PROFILE_URL', 'https://connect.kingsch.at/api/profile'));
         curl_setopt_array($ch, [

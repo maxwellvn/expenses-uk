@@ -232,3 +232,20 @@ function category_label(array $item): string
 {
     return $item['category'] === 'Other' && !empty($item['category_other']) ? 'Other: ' . $item['category_other'] : $item['category'];
 }
+
+// KingsChat messages queued during this request go out after the response has been sent, so nobody waits.
+// A few older due messages are retried on any page load too; the cron route is the backstop.
+register_shutdown_function(function (): void {
+    if (PHP_SAPI === 'cli') return;
+    try {
+        $due = Notify::$queued || (random_int(1, 10) === 1
+            && (int) Database::query('SELECT COUNT(*) FROM notifications WHERE status = "pending" AND next_try_at <= NOW()')->fetchColumn() > 0);
+        if (!$due) return;
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+        if (function_exists('litespeed_finish_request')) litespeed_finish_request();
+        elseif (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        Notify::drain(20);
+    } catch (Throwable $e) {
+        error_log('KingsChat notify: ' . $e->getMessage());
+    }
+});

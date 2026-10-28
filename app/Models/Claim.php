@@ -177,12 +177,12 @@ final class Claim
         return $ok;
     }
 
+    /** Records what happened and queues the KingsChat messages for it, in the same transaction. */
     public static function event(int $claimId, string $actorId, string $type, ?string $body = null): void
     {
-        Database::query(
-            'INSERT INTO claim_events (claim_id, actor_id, type, body) VALUES (?, ?, ?, ?)',
-            [$claimId, $actorId, $type, ($body !== null && trim($body) !== '') ? trim($body) : null],
-        );
+        $body = ($body !== null && trim($body) !== '') ? trim($body) : null;
+        Database::query('INSERT INTO claim_events (claim_id, actor_id, type, body) VALUES (?, ?, ?, ?)', [$claimId, $actorId, $type, $body]);
+        Notify::claimEvent($claimId, (int) Database::pdo()->lastInsertId(), $actorId, $type, $body);
     }
 
     private static function writeItems(int $id, array $items): void
