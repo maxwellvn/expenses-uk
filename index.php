@@ -32,6 +32,13 @@ $routes = [
     ['POST', '#^/claims/(\d+)/decision$#', [ReviewController::class, 'decide']],
 ];
 
+// Only answer on the configured host (Hostinger nests subdomain folders inside the parent site's folder).
+$appHost = (string) parse_url(env('APP_URL'), PHP_URL_HOST);
+if (env('APP_ENV') === 'production' && strcasecmp($appHost, (string) ($_SERVER['HTTP_HOST'] ?? '')) !== 0) {
+    http_response_code(404);
+    exit;
+}
+
 $path = '/' . trim(substr((string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), strlen(base_path())), '/');
 $method = $_SERVER['REQUEST_METHOD'];
 
